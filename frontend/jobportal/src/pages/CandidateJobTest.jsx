@@ -86,7 +86,7 @@ const CandidateJobTest = () => {
                 console.error(err);
                 setError(
                     err.response?.data?.detail ||
-                    "Could not load test. You may not have access or test is not available."
+                        "Could not load test. You may not have access or test is not available."
                 );
             } finally {
                 setLoading(false);
@@ -137,7 +137,7 @@ const CandidateJobTest = () => {
             console.error(err);
             setError(
                 err.response?.data?.detail ||
-                "Could not submit test. Please try again."
+                    "Could not submit test. Please try again."
             );
         } finally {
             setSubmitting(false);
@@ -163,28 +163,23 @@ const CandidateJobTest = () => {
                     `/applications/${applicationId}/submit-test/`,
                     payload
                 );
+
+                // ✅ Save score and mark as expired, but STAY on this page
                 setResult(res.data);
                 setExpired(true);
                 localStorage.removeItem(timerKey);
-
-                alert(
-                    "Your test has been auto-submitted" +
-                    (reason === "time-over"
-                        ? " because time is over."
-                        : " due to a rule violation (tab switch/refresh).")
-                );
-                navigate("/candidate/applications");
+                // ❌ NO redirect here – user stays and sees score in the UI
             } catch (err) {
                 console.error(err);
                 setError(
                     err.response?.data?.detail ||
-                    "Could not auto-submit your test. Please contact support."
+                        "Could not auto-submit your test. Please contact support."
                 );
             } finally {
                 setSubmitting(false);
             }
         },
-        [applicationId, expired, navigate, result, submitting, answers, timerKey]
+        [applicationId, expired, result, submitting, answers, timerKey]
     );
 
     // Countdown timer effect
@@ -289,7 +284,8 @@ const CandidateJobTest = () => {
         );
     }
 
-    if ((error && !test) || expired) {
+    // ❗ Only show "expired" message if we have NO result
+    if ((error && !test) || (expired && !result)) {
         return (
             <div
                 style={{

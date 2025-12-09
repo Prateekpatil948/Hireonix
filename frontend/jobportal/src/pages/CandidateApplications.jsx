@@ -185,7 +185,7 @@ const CandidateApplications = () => {
         if (!selectedApplicationId) return;
 
         // Exactly 30 mins from now
-        const expiresAt = Date.now() + 30 * 60 * 1000;
+        const expiresAt = Date.now() + 1 * 60 * 1000;
 
         try {
             // You can read this in your Test component to enforce the timer
