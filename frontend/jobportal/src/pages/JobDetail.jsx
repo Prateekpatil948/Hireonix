@@ -50,6 +50,16 @@ const JobDetails = () => {
             return;
         }
 
+        // 🔹 Profile completeness check with improved message
+        // Adjust `user.profile_complete` to your actual flag if different.
+        if (user && user.profile_complete === false) {
+            setApplyMessage(
+                "Before applying, make sure your profile is complete and up to date."
+            );
+            setApplying(false);
+            return;
+        }
+
         if (!job) {
             setApplyMessage("Job information not available.");
             setApplying(false);
@@ -397,83 +407,87 @@ const JobDetails = () => {
                         </p>
                     </div>
 
+
+
                     {/* Actions */}
                     <div
                         style={{
                             marginTop: 20,
                             display: "flex",
                             flexWrap: "wrap",
-                            gap: 8,
-                            justifyContent: "flex-end",
+                            gap: 12,
+                            justifyContent: "space-between",
                             alignItems: "center",
                         }}
                     >
-                        {external_link && (
-                            <a
-                                href={external_link}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="btn btn-outline"
-                            >
-                                Apply on Company Site
-                            </a>
-                        )}
-
-                        {/* Apply button with loader */}
-                        <button
-                            className="btn btn-primary"
-                            onClick={handleApply}
-                            disabled={applied || !is_active || applying}
+                        {/* Left Side Message */}
+                        <div
                             style={{
-                                opacity: !is_active ? 0.5 : 1,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
+                                fontSize: 13,
+                                background: "#f0f9ff",
+                                border: "1px solid #bae6fd",
+                                color: "#0369a1",
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                whiteSpace: "nowrap",
                             }}
                         >
-                            {applying ? (
-                                <>
-                                    <span
-                                        style={{
-                                            width: "14px",
-                                            height: "14px",
-                                            borderRadius: "50%",
-                                            border: "2px solid white",
-                                            borderTopColor: "transparent",
-                                            animation: "spin 0.7s linear infinite",
-                                            display: "inline-block",
-                                        }}
-                                    />
-                                    Applying...
-                                </>
-                            ) : (
-                                <>
-                                    {!is_active
-                                        ? "Job Closed"
-                                        : applied
-                                            ? "Applied"
-                                            : "Apply"}
-                                </>
+                            ℹ️ Before applying, make sure your profile is complete and up to date.
+                        </div>
+
+                        {/* Right Side Buttons */}
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            {external_link && (
+                                <a
+                                    href={external_link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-outline"
+                                >
+                                    Apply on Company Site
+                                </a>
                             )}
-                        </button>
+
+                            {/* Apply button with loader */}
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleApply}
+                                disabled={applied || !is_active || applying}
+                                style={{
+                                    opacity: !is_active ? 0.5 : 1,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                }}
+                            >
+                                {applying ? (
+                                    <>
+                                        <span
+                                            style={{
+                                                width: "14px",
+                                                height: "14px",
+                                                borderRadius: "50%",
+                                                border: "2px solid white",
+                                                borderTopColor: "transparent",
+                                                animation: "spin 0.7s linear infinite",
+                                                display: "inline-block",
+                                            }}
+                                        />
+                                        Applying...
+                                    </>
+                                ) : (
+                                    <>
+                                        {!is_active
+                                            ? "Job Closed"
+                                            : applied
+                                                ? "Applied"
+                                                : "Apply"}
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Apply Message */}
-                    {applyMessage && (
-                        <p
-                            style={{
-                                marginTop: 10,
-                                color: applyMessage
-                                    .toLowerCase()
-                                    .includes("success")
-                                    ? "green"
-                                    : "red",
-                                fontSize: 13,
-                            }}
-                        >
-                            {applyMessage}
-                        </p>
-                    )}
                 </div>
             </div>
         </div>

@@ -8,7 +8,17 @@ const CandidateApplications = () => {
     const [loading, setLoading] = useState(true);
     const [withdrawingId, setWithdrawingId] = useState(null);
 
-    const navigate = useNavigate(); // ✅ new
+    // 🔹 New state for Test popup
+    const [showTestModal, setShowTestModal] = useState(false);
+    const [selectedApplicationId, setSelectedApplicationId] = useState(null);
+
+    // 🔹 Track tests that have already been started (and should now be expired/locked)
+    const [testLocked, setTestLocked] = useState({});
+
+    // 🔹 Live time for the modal (for info display)
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    const navigate = useNavigate();
 
     // Pagination state
     const [page, setPage] = useState(1);
@@ -20,6 +30,19 @@ const CandidateApplications = () => {
                 const res = await axiosClient.get("applications/");
                 setApplications(res.data);
                 setPage(1);
+
+                // 🔹 On load, check which tests were already started earlier
+                //    If a timer exists in localStorage for that application, we lock the test.
+                const locked = {};
+                res.data.forEach((app) => {
+                    const key = `test_timer_${app.id}`;
+                    const stored = localStorage.getItem(key);
+                    if (stored) {
+                        // We treat it as expired/locked for UI purposes (no re-attempts)
+                        locked[app.id] = true;
+                    }
+                });
+                setTestLocked(locked);
             } catch (err) {
                 console.error("Error loading applications:", err);
             } finally {
@@ -28,6 +51,27 @@ const CandidateApplications = () => {
         };
         fetchApplications();
     }, []);
+
+    // 🔹 Update current time every second while modal is open
+    useEffect(() => {
+        if (!showTestModal) return;
+        const interval = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [showTestModal]);
+
+    // 🔹 Block copy/paste/cut and keyboard shortcuts inside the test modal
+    const handleBlockClipboard = (e) => {
+        e.preventDefault();
+    };
+
+    const handleBlockShortcuts = (e) => {
+        if ((e.ctrlKey || e.metaKey) &&
+            ["c", "v", "x", "a"].includes(e.key.toLowerCase())) {
+            e.preventDefault();
+        }
+    };
 
     const renderStatusPill = (status) => {
         const baseStyle = {
@@ -123,9 +167,47 @@ const CandidateApplications = () => {
         }
     };
 
+    // 🔹 When user clicks "Take Test" -> open popup (only if not locked)
     const handleTakeTest = (applicationId) => {
-        // ✅ Navigate to the test page for this application
-        navigate(`/candidate/test/${applicationId}`);
+        if (testLocked[applicationId]) return; // already expired/locked
+        setSelectedApplicationId(applicationId);
+        setShowTestModal(true);
+    };
+
+    // 🔹 Close popup without starting test
+    const handleCloseTestModal = () => {
+        setShowTestModal(false);
+        setSelectedApplicationId(null);
+    };
+
+    // 🔹 Start test: set 30 min limit + navigate + lock test for future
+    const handleConfirmStartTest = () => {
+        if (!selectedApplicationId) return;
+
+        // Exactly 30 mins from now
+        const expiresAt = Date.now() + 30 * 60 * 1000;
+
+        try {
+            // You can read this in your Test component to enforce the timer
+            localStorage.setItem(
+                `test_timer_${selectedApplicationId}`,
+                JSON.stringify({
+                    applicationId: selectedApplicationId,
+                    expiresAt,
+                })
+            );
+
+            // 🔹 Immediately lock this test so user cannot come back and start again
+            setTestLocked((prev) => ({
+                ...prev,
+                [selectedApplicationId]: true,
+            }));
+        } catch (e) {
+            console.error("Failed to save test timer", e);
+        }
+
+        setShowTestModal(false);
+        navigate(`/candidate/test/${selectedApplicationId}`);
     };
 
     if (loading) {
@@ -285,163 +367,181 @@ const CandidateApplications = () => {
                                 gap: 10,
                             }}
                         >
-                            {currentApplications.map((app) => (
-                                <li
-                                    key={app.id}
-                                    style={{
-                                        border: "1px solid #e5e7eb",
-                                        borderRadius: 14,
-                                        padding: "10px 12px",
-                                        background:
-                                            "linear-gradient(135deg,#ffffff,#f9fafb)",
-                                        boxShadow:
-                                            "0 2px 6px rgba(15,23,42,0.05)",
-                                    }}
-                                >
-                                    <div
+                            {currentApplications.map((app) => {
+                                const isLocked = !!testLocked[app.id];
+                                const isDisabled =
+                                    !app.test || app.test.completed_at || isLocked;
+
+                                return (
+                                    <li
+                                        key={app.id}
                                         style={{
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            gap: 12,
-                                            alignItems: "flex-start",
+                                            border: "1px solid #e5e7eb",
+                                            borderRadius: 14,
+                                            padding: "10px 12px",
+                                            background:
+                                                "linear-gradient(135deg,#ffffff,#f9fafb)",
+                                            boxShadow:
+                                                "0 2px 6px rgba(15,23,42,0.05)",
                                         }}
                                     >
-                                        {/* Left: job info */}
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div
-                                                style={{
-                                                    fontWeight: 600,
-                                                    fontSize: 15,
-                                                    display: "flex",
-                                                    flexWrap: "wrap",
-                                                    gap: 6,
-                                                }}
-                                            >
-                                                <span
-                                                    style={{
-                                                        whiteSpace: "nowrap",
-                                                        textOverflow: "ellipsis",
-                                                        overflow: "hidden",
-                                                        maxWidth: 260,
-                                                    }}
-                                                >
-                                                    {app.job?.title || "Job"}
-                                                </span>
-                                                {app.job?.company_name && (
-                                                    <span
-                                                        style={{
-                                                            color: "#6b7280",
-                                                            fontSize: 11,
-                                                            padding:
-                                                                "1px 6px",
-                                                            borderRadius: 999,
-                                                            background:
-                                                                "#f3f4f6",
-                                                        }}
-                                                    >
-                                                        {
-                                                            app.job
-                                                                .company_name
-                                                        }
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            <div
-                                                style={{
-                                                    fontSize: 12,
-                                                    color: "#6b7280",
-                                                    marginTop: 2,
-                                                }}
-                                            >
-                                                {app.job?.location} •{" "}
-                                                {app.job?.job_type}
-                                            </div>
-
-                                            <div
-                                                style={{
-                                                    marginTop: 6,
-                                                    fontSize: 12,
-                                                    color: "#9ca3af",
-                                                }}
-                                            >
-                                                Applied on{" "}
-                                                {app.applied_at
-                                                    ? new Date(
-                                                        app.applied_at
-                                                    ).toLocaleDateString()
-                                                    : "-"}
-                                            </div>
-
-                                            {app.cover_letter && (
-                                                <div
-                                                    style={{
-                                                        fontSize: 13,
-                                                        marginTop: 6,
-                                                        fontStyle: "italic",
-                                                        color: "#4b5563",
-                                                    }}
-                                                >
-                                                    “{app.cover_letter}”
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Right: status + actions */}
                                         <div
                                             style={{
                                                 display: "flex",
-                                                flexDirection: "column",
-                                                alignItems: "flex-end",
-                                                gap: 6,
+                                                justifyContent: "space-between",
+                                                gap: 12,
+                                                alignItems: "flex-start",
                                             }}
                                         >
-                                            {renderStatusPill(app.status)}
+                                            {/* Left: job info */}
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div
+                                                    style={{
+                                                        fontWeight: 600,
+                                                        fontSize: 15,
+                                                        display: "flex",
+                                                        flexWrap: "wrap",
+                                                        gap: 6,
+                                                    }}
+                                                >
+                                                    <span
+                                                        style={{
+                                                            whiteSpace: "nowrap",
+                                                            textOverflow: "ellipsis",
+                                                            overflow: "hidden",
+                                                            maxWidth: 260,
+                                                        }}
+                                                    >
+                                                        {app.job?.title || "Job"}
+                                                    </span>
+                                                    {app.job?.company_name && (
+                                                        <span
+                                                            style={{
+                                                                color: "#6b7280",
+                                                                fontSize: 11,
+                                                                padding:
+                                                                    "1px 6px",
+                                                                borderRadius: 999,
+                                                                background:
+                                                                    "#f3f4f6",
+                                                            }}
+                                                        >
+                                                            {
+                                                                app.job
+                                                                    .company_name
+                                                            }
+                                                        </span>
+                                                    )}
+                                                </div>
 
-                                            {/* Take Test button */}
-                                            <button
-                                                type="button"
-                                                disabled={!app.test || app.test.completed_at}   // <-- DISABLE LOGIC
-                                                onClick={() => handleTakeTest(app.id)}
+                                                <div
+                                                    style={{
+                                                        fontSize: 12,
+                                                        color: "#6b7280",
+                                                        marginTop: 2,
+                                                    }}
+                                                >
+                                                    {app.job?.location} •{" "}
+                                                    {app.job?.job_type}
+                                                </div>
+
+                                                <div
+                                                    style={{
+                                                        marginTop: 6,
+                                                        fontSize: 12,
+                                                        color: "#9ca3af",
+                                                    }}
+                                                >
+                                                    Applied on{" "}
+                                                    {app.applied_at
+                                                        ? new Date(
+                                                            app.applied_at
+                                                        ).toLocaleDateString()
+                                                        : "-"}
+                                                </div>
+
+                                                {app.cover_letter && (
+                                                    <div
+                                                        style={{
+                                                            fontSize: 13,
+                                                            marginTop: 6,
+                                                            fontStyle: "italic",
+                                                            color: "#4b5563",
+                                                        }}
+                                                    >
+                                                        “{app.cover_letter}”
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Right: status + actions */}
+                                            <div
                                                 style={{
-                                                    padding: "4px 10px",
-                                                    fontSize: 12,
-                                                    borderRadius: 999,
-                                                    opacity: !app.test || app.test.completed_at ? 0.5 : 1,
-                                                    cursor: !app.test || app.test.completed_at ? "not-allowed" : "pointer",
-                                                    backgroundColor: app.test?.completed_at ? "#9ca3af" : "#2563eb",
-                                                    color: "white",
-                                                    border: "none",
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    alignItems: "flex-end",
+                                                    gap: 6,
                                                 }}
                                             >
-                                                {app.test?.completed_at ? "Test Completed" : "Take Test"}
-                                            </button>
+                                                {renderStatusPill(app.status)}
 
+                                                {/* Take Test button */}
+                                                <button
+                                                    type="button"
+                                                    disabled={isDisabled}
+                                                    onClick={() =>
+                                                        handleTakeTest(app.id)
+                                                    }
+                                                    style={{
+                                                        padding: "4px 10px",
+                                                        fontSize: 12,
+                                                        borderRadius: 999,
+                                                        opacity: isDisabled ? 0.5 : 1,
+                                                        cursor: isDisabled
+                                                            ? "not-allowed"
+                                                            : "pointer",
+                                                        backgroundColor:
+                                                            app.test?.completed_at
+                                                                ? "#9ca3af"
+                                                                : isLocked
+                                                                    ? "#9ca3af"
+                                                                    : "#2563eb",
+                                                        color: "white",
+                                                        border: "none",
+                                                    }}
+                                                >
+                                                    {app.test?.completed_at
+                                                        ? "Test Completed"
+                                                        : isLocked
+                                                            ? "Test Expired"
+                                                            : "Take Test"}
+                                                </button>
 
-                                            {/* Withdraw button */}
-                                            <button
-                                                type="button"
-                                                className="btn btn-outline"
-                                                onClick={() =>
-                                                    handleWithdraw(app.id)
-                                                }
-                                                disabled={
-                                                    withdrawingId === app.id
-                                                }
-                                                style={{
-                                                    padding: "4px 10px",
-                                                    fontSize: 12,
-                                                    borderRadius: 999,
-                                                }}
-                                            >
-                                                {withdrawingId === app.id
-                                                    ? "Withdrawing..."
-                                                    : "Withdraw"}
-                                            </button>
+                                                {/* Withdraw button */}
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline"
+                                                    onClick={() =>
+                                                        handleWithdraw(app.id)
+                                                    }
+                                                    disabled={
+                                                        withdrawingId === app.id
+                                                    }
+                                                    style={{
+                                                        padding: "4px 10px",
+                                                        fontSize: 12,
+                                                        borderRadius: 999,
+                                                    }}
+                                                >
+                                                    {withdrawingId === app.id
+                                                        ? "Withdrawing..."
+                                                        : "Withdraw"}
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                </li>
-                            ))}
+                                    </li>
+                                );
+                            })}
                         </ul>
 
                         <div style={{ marginTop: 10 }}>
@@ -454,6 +554,138 @@ const CandidateApplications = () => {
                     </>
                 )}
             </div>
+
+            {/* 🔹 Test Start Popup */}
+            {showTestModal && (
+                <div
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(15,23,42,0.45)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 9999,
+                    }}
+                >
+                    <div
+                        style={{
+                            width: "100%",
+                            maxWidth: 420,
+                            background:
+                                "linear-gradient(135deg, #eff6ff, #f9fafb)",
+                            borderRadius: 20,
+                            boxShadow: "0 24px 80px rgba(15,23,42,0.45)",
+                            border: "1px solid rgba(148,163,184,0.35)",
+                            padding: "18px 20px",
+                        }}
+                        tabIndex={0}
+                        onCopy={handleBlockClipboard}
+                        onPaste={handleBlockClipboard}
+                        onCut={handleBlockClipboard}
+                        onKeyDown={handleBlockShortcuts}
+                    >
+                        <h3
+                            style={{
+                                margin: 0,
+                                marginBottom: 8,
+                                fontSize: 18,
+                                fontWeight: 700,
+                                color: "#111827",
+                            }}
+                        >
+                            Starting the Test
+                        </h3>
+
+                        <div
+                            style={{
+                                marginBottom: 6,
+                                fontSize: 13,
+                                color: "#6b7280",
+                            }}
+                        >
+                            Current time:{" "}
+                            <strong>
+                                {currentTime.toLocaleTimeString()}
+                            </strong>
+                        </div>
+
+                        <div
+                            style={{
+                                marginBottom: 6,
+                                fontSize: 13,
+                                color: "#1d4ed8",
+                            }}
+                        >
+                            Test time limit:&nbsp;
+                            <strong>30:00 minutes</strong> from the moment you
+                            click <strong>Start Now</strong>.
+                        </div>
+
+                        <p
+                            style={{
+                                margin: 0,
+                                fontSize: 14,
+                                color: "#4b5563",
+                                lineHeight: 1.6,
+                            }}
+                        >
+                            Once you start the test, you must complete it within{" "}
+                            <strong>30 minutes</strong>.
+                            <br />
+                            Please{" "}
+                            <strong>
+                                do not switch tabs, refresh the page, or use
+                                copy / paste during the test
+                            </strong>
+                            . These actions may cause your test to be submitted
+                            automatically.
+                        </p>
+
+                        <div
+                            style={{
+                                marginTop: 16,
+                                display: "flex",
+                                justifyContent: "flex-end",
+                                gap: 8,
+                            }}
+                        >
+                            <button
+                                type="button"
+                                onClick={handleCloseTestModal}
+                                style={{
+                                    padding: "6px 12px",
+                                    fontSize: 13,
+                                    borderRadius: 999,
+                                    border: "1px solid #e5e7eb",
+                                    background: "#ffffff",
+                                    color: "#4b5563",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmStartTest}
+                                style={{
+                                    padding: "6px 14px",
+                                    fontSize: 13,
+                                    borderRadius: 999,
+                                    border: "none",
+                                    background:
+                                        "linear-gradient(135deg,#2563eb,#4f46e5)",
+                                    color: "#ffffff",
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                }}
+                            >
+                                Start Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

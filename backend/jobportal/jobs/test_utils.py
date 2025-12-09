@@ -100,40 +100,45 @@ def create_test_for_application(application):
     # =========================
     if GROOK_API_KEY:
         prompt = f"""
-You are an expert technical assessment generator.
+            You are an expert technical assessment generator.
 
-Generate 25 UNIQUE, NON-REPETITIVE, intermediate-level MCQs based ONLY on the following job skills:
-{skills_text}
+            Generate exactly 25 UNIQUE, NON-REPEATING, intermediate-to-advanced MCQs based strictly on the following job skills:
+            {skills_text}
 
-STRICT RULES:
-1. Questions must test real practical knowledge, not just theory.
-2. Every question must be unique — do NOT repeat wording, pattern, or idea.
-3. Mix difficulty: about 60% intermediate, 40% slightly advanced.
-4. Cover subtopics, real-world scenarios, debugging, best practices, edge cases, and short code or configuration snippets where relevant.
-5. Avoid generic definition questions.
-6. Each question MUST have exactly 4 options.
-7. Only ONE correct answer per question.
-8. The correct answer MUST be indicated by its index (0, 1, 2, or 3) in the options array.
+            HARD RULES (MUST FOLLOW ALL):
+            1. Every question MUST be completely unique — no reused patterns, no similar phrasing, no duplicated logic.
+            2. Questions MUST test practical, real-world problem-solving based on the given skills.
+            3. Include scenario-based questions, debugging questions, best practices, performance issues, and short code/config snippets.
+            4. Avoid basic theory or definition-based questions.
+            5. Difficulty mix: ~60% intermediate, ~40% slightly advanced.
+            6. Each question MUST have exactly 4 answer options.
+            7. Only one correct answer per question.
+            8. Correct answer MUST be provided as a numeric index (0–3) of the options array.
+            9. DO NOT repeat ANY question structure, idea, or code snippet.
+            10. DO NOT generate fewer than 25 questions.
 
-OUTPUT FORMAT (VERY IMPORTANT):
-Your ENTIRE response must be ONLY this JSON structure, with NO explanation or extra text:
+            OUTPUT FORMAT (STRICT — NO EXTRA TEXT):
+            Return ONLY this JSON structure:
 
-{{
-  "questions": [
-    {{
-      "question": "text of the question",
-      "options": ["option A", "option B", "option C", "option D"],
-      "correct_option": 0
-    }}
-  ]
-}}
+            {{
+            "questions": [
+                {{
+                "question": "question text here",
+                "options": ["A", "B", "C", "D"],
+                "correct_option": 0
+                }}
+            ]
+            }}
 
-REQUIREMENTS:
-- Exactly 25 questions in the "questions" array.
-- Each "options" array must have length 4.
-- "correct_option" must be an integer index from 0 to 3.
-- JSON must be strictly valid and directly parsable by Python json.loads.
-"""
+            ABSOLUTE REQUIREMENTS:
+            - Exactly 25 objects inside the "questions" array.
+            - Each "options" array MUST contain exactly 4 items.
+            - "correct_option" MUST be an integer (0, 1, 2, or 3).
+            - JSON MUST be valid and directly parsable with Python json.loads.
+
+            If you cannot follow ANY rule, regenerate until all rules are satisfied.
+            """
+
 
         headers = {
             "Authorization": f"Bearer {GROOK_API_KEY}",

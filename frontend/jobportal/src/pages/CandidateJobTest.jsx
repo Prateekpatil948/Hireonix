@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axiosClient from "../api/axiosClient";
 
@@ -13,12 +13,65 @@ const CandidateJobTest = () => {
     const [result, setResult] = useState(null);
     const [error, setError] = useState("");
 
+    const [remainingSeconds, setRemainingSeconds] = useState(null);
+    const [expired, setExpired] = useState(false);
+
+    const timerKey = `test_timer_${applicationId}`;
+
+    // Format mm:ss
+    const formatTime = (secs) => {
+        if (secs == null || Number.isNaN(secs)) return "--:--";
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    };
+
+    // Fetch test + initialize timer from localStorage
     useEffect(() => {
         const fetchTest = async () => {
             setLoading(true);
             setError("");
 
             try {
+                // 🔹 Check timer
+                const stored = localStorage.getItem(timerKey);
+                if (!stored) {
+                    setError(
+                        "Test is not available. Please start the test from My Applications."
+                    );
+                    setTest(null);
+                    setExpired(true);
+                    return;
+                }
+
+                let parsed;
+                try {
+                    parsed = JSON.parse(stored);
+                } catch {
+                    parsed = null;
+                }
+
+                if (!parsed || !parsed.expiresAt) {
+                    setError("Invalid test timer. Please contact support.");
+                    setTest(null);
+                    setExpired(true);
+                    return;
+                }
+
+                const now = Date.now();
+                const diffMs = parsed.expiresAt - now;
+                if (diffMs <= 0) {
+                    setError("Test time is already over.");
+                    setTest(null);
+                    setRemainingSeconds(0);
+                    setExpired(true);
+                    return;
+                }
+
+                const initialSeconds = Math.floor(diffMs / 1000);
+                setRemainingSeconds(initialSeconds);
+
+                // 🔹 Load test questions
                 const res = await axiosClient.get(
                     `/applications/${applicationId}/test/`
                 );
@@ -40,8 +93,10 @@ const CandidateJobTest = () => {
             }
         };
 
-        fetchTest();
-    }, [applicationId]);
+        if (applicationId) {
+            fetchTest();
+        }
+    }, [applicationId, timerKey]);
 
     const handleOptionChange = (questionId, option) => {
         setAnswers((prev) => ({
@@ -50,28 +105,34 @@ const CandidateJobTest = () => {
         }));
     };
 
+    // Common payload builder
+    const buildPayload = () => ({
+        answers: Object.entries(answers)
+            .filter(([, selected]) => !!selected)
+            .map(([question_id, selected_option]) => ({
+                question_id: Number(question_id),
+                selected_option,
+            })),
+    });
+
+    // Manual submit (button)
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (submitting) return;
+        if (submitting || expired || result) return;
 
         setSubmitting(true);
         setError("");
 
         try {
-            const payload = {
-                answers: Object.entries(answers)
-                    .filter(([, selected]) => !!selected)
-                    .map(([question_id, selected_option]) => ({
-                        question_id: Number(question_id),
-                        selected_option,
-                    })),
-            };
+            const payload = buildPayload();
 
             const res = await axiosClient.post(
                 `/applications/${applicationId}/submit-test/`,
                 payload
             );
             setResult(res.data);
+            setExpired(true);
+            localStorage.removeItem(timerKey);
         } catch (err) {
             console.error(err);
             setError(
@@ -83,8 +144,121 @@ const CandidateJobTest = () => {
         }
     };
 
+    // Auto-submit (time-over, tab-switch, etc.)
+    const autoSubmit = useCallback(
+        async (reason) => {
+            if (submitting || result || expired) return;
+
+            setSubmitting(true);
+            setError("");
+
+            try {
+                const payload = {
+                    ...buildPayload(),
+                    auto_submitted: true,
+                    reason: reason || "auto",
+                };
+
+                const res = await axiosClient.post(
+                    `/applications/${applicationId}/submit-test/`,
+                    payload
+                );
+                setResult(res.data);
+                setExpired(true);
+                localStorage.removeItem(timerKey);
+
+                alert(
+                    "Your test has been auto-submitted" +
+                    (reason === "time-over"
+                        ? " because time is over."
+                        : " due to a rule violation (tab switch/refresh).")
+                );
+                navigate("/candidate/applications");
+            } catch (err) {
+                console.error(err);
+                setError(
+                    err.response?.data?.detail ||
+                    "Could not auto-submit your test. Please contact support."
+                );
+            } finally {
+                setSubmitting(false);
+            }
+        },
+        [applicationId, expired, navigate, result, submitting, answers, timerKey]
+    );
+
+    // Countdown timer effect
+    useEffect(() => {
+        if (remainingSeconds == null || expired || result) return;
+
+        if (remainingSeconds <= 0) {
+            setRemainingSeconds(0);
+            setExpired(true);
+            autoSubmit("time-over");
+            return;
+        }
+
+        const intervalId = setInterval(() => {
+            setRemainingSeconds((prev) => {
+                if (prev == null) return prev;
+                if (prev <= 1) {
+                    clearInterval(intervalId);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [remainingSeconds, expired, result, autoSubmit]);
+
+    // Tab switching → auto-submit
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.hidden && !expired && !result) {
+                autoSubmit("tab-switch");
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () =>
+            document.removeEventListener(
+                "visibilitychange",
+                handleVisibilityChange
+            );
+    }, [expired, result, autoSubmit]);
+
+    // Refresh / close → warn
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (!expired && !result) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () =>
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, [expired, result]);
+
+    // Block copy / paste / cut + shortcuts
+    const blockClipboard = (e) => {
+        e.preventDefault();
+        alert("Copy / paste is disabled during the test.");
+    };
+
+    const blockShortcuts = (e) => {
+        if (
+            (e.ctrlKey || e.metaKey) &&
+            ["c", "v", "x", "a", "s", "p"].includes(e.key.toLowerCase())
+        ) {
+            e.preventDefault();
+        }
+    };
+
     const goToApplications = () => {
-        navigate("/candidate/applications"); // adjust if your route differs
+        navigate("/candidate/applications");
     };
 
     if (loading) {
@@ -115,7 +289,7 @@ const CandidateJobTest = () => {
         );
     }
 
-    if (error && !test) {
+    if ((error && !test) || expired) {
         return (
             <div
                 style={{
@@ -142,7 +316,7 @@ const CandidateJobTest = () => {
                         marginBottom: 10,
                     }}
                 >
-                    {error}
+                    {error || "This test is no longer available or has expired."}
                 </div>
                 <button
                     type="button"
@@ -160,6 +334,10 @@ const CandidateJobTest = () => {
 
     return (
         <div
+            onCopy={blockClipboard}
+            onCut={blockClipboard}
+            onPaste={blockClipboard}
+            onKeyDown={blockShortcuts}
             style={{
                 minHeight: "100vh",
                 display: "flex",
@@ -224,49 +402,93 @@ const CandidateJobTest = () => {
                             Complete this test to increase your chances of being
                             shortlisted.
                         </div>
-                    </div>
-
-                    {result && (
                         <div
                             style={{
-                                padding: "8px 10px",
-                                borderRadius: 16,
-                                border: "1px solid rgba(52,211,153,0.7)",
-                                background: "rgba(6,78,59,0.5)",
-                                textAlign: "right",
-                                minWidth: 160,
+                                fontSize: 11,
+                                color: "#facc15",
+                                marginTop: 4,
                             }}
                         >
-                            <div
-                                style={{
-                                    fontSize: 11,
-                                    color: "#d1fae5",
-                                }}
-                            >
-                                Your Score
-                            </div>
-                            <div
-                                style={{
-                                    fontSize: 18,
-                                    fontWeight: 700,
-                                    color: "#6ee7b7",
-                                }}
-                            >
-                                {result.score} / {result.total}
-                            </div>
-                            <div
-                                style={{
-                                    fontSize: 11,
-                                    marginTop: 2,
-                                    color: result.passed ? "#bbf7d0" : "#fecaca",
-                                }}
-                            >
-                                {result.passed
-                                    ? "Shortlist criteria met"
-                                    : "Below shortlist cutoff (30+)"}
-                            </div>
+                            Time remaining:{" "}
+                            <strong>{formatTime(remainingSeconds)}</strong> (auto
+                            submit when time ends)
                         </div>
-                    )}
+                    </div>
+
+                    <div
+                        style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 8,
+                        }}
+                    >
+                        {/* Timer badge */}
+                        <div
+                            style={{
+                                padding: "6px 12px",
+                                borderRadius: 999,
+                                backgroundColor: expired
+                                    ? "rgba(127,29,29,0.8)"
+                                    : "rgba(15,23,42,0.9)",
+                                border: expired
+                                    ? "1px solid rgba(248,113,113,0.8)"
+                                    : "1px solid rgba(129,140,248,0.8)",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                minWidth: 90,
+                                textAlign: "center",
+                            }}
+                        >
+                            {expired
+                                ? "Time Up"
+                                : `⏱ ${formatTime(remainingSeconds)}`}
+                        </div>
+
+                        {result && (
+                            <div
+                                style={{
+                                    padding: "8px 10px",
+                                    borderRadius: 16,
+                                    border: "1px solid rgba(52,211,153,0.7)",
+                                    background: "rgba(6,78,59,0.5)",
+                                    textAlign: "right",
+                                    minWidth: 160,
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        fontSize: 11,
+                                        color: "#d1fae5",
+                                    }}
+                                >
+                                    Your Score
+                                </div>
+                                <div
+                                    style={{
+                                        fontSize: 18,
+                                        fontWeight: 700,
+                                        color: "#6ee7b7",
+                                    }}
+                                >
+                                    {result.score} / {result.total}
+                                </div>
+                                <div
+                                    style={{
+                                        fontSize: 11,
+                                        marginTop: 2,
+                                        color: result.passed
+                                            ? "#bbf7d0"
+                                            : "#fecaca",
+                                    }}
+                                >
+                                    {result.passed
+                                        ? "Shortlist criteria met"
+                                        : "Below shortlist cutoff (30+)"}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {error && (
@@ -373,7 +595,9 @@ const CandidateJobTest = () => {
                                                 type="radio"
                                                 name={`q-${q.id}`}
                                                 style={{ display: "none" }}
-                                                checked={answers[q.id] === opt.label}
+                                                checked={
+                                                    answers[q.id] === opt.label
+                                                }
                                                 onChange={() =>
                                                     handleOptionChange(
                                                         q.id,
@@ -422,7 +646,7 @@ const CandidateJobTest = () => {
                             <button
                                 type="submit"
                                 className="btn btn-primary"
-                                disabled={submitting}
+                                disabled={submitting || expired}
                                 style={{
                                     fontSize: 13,
                                     paddingInline: 18,
