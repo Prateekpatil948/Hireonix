@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+env/
+venv/
+.env
+.venv
+
+# Django
+media/
+staticfiles/
+
+# React
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
