@@ -17,15 +17,16 @@ from .email_utils import send_application_status_email
 from .test_utils import create_test_for_application
 
 from .models import (
-    Job, 
-    Application, 
-    SavedJob, 
-    JobAlert, 
+    Job,
+    Application,
+    SavedJob,
+    JobAlert,
     JobAlertNotification,
     Interview,
     JobTestQuestion,
     JobTestAnswer,
     JobTest,
+    ApplicationStatusNotification,  # 🔹 NEW
 )
 from .serializers import (
     JobSerializer,
@@ -37,6 +38,7 @@ from .serializers import (
     JobTestSerializer,
     JobTestAnswerInputSerializer,
     JobTestResultSerializer,
+    ApplicationStatusNotificationSerializer,  # 🔹 NEW
 )
 
 
@@ -89,7 +91,13 @@ class JobViewSet(viewsets.ModelViewSet):
         base_qs = Job.objects.all().order_by("-created_at")
 
         # 🔹 For recruiter-only actions: see ALL their jobs (active + inactive)
-        if self.action in ["update", "partial_update", "destroy", "my_jobs", "applications"]:
+        if self.action in [
+            "update",
+            "partial_update",
+            "destroy",
+            "my_jobs",
+            "applications",
+        ]:
             if user.is_authenticated and getattr(user, "role", None) == "recruiter":
                 return base_qs.filter(company__user=user)
             return Job.objects.none()
@@ -245,7 +253,11 @@ class JobViewSet(viewsets.ModelViewSet):
         serializer = ApplicationSerializer(application)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    @action(
+        detail=False,
+        methods=["get"],
+        permission_classes=[permissions.IsAuthenticated],
+    )
     def recommended(self, request):
         """
         GET /api/jobs/recommended/
@@ -306,7 +318,6 @@ class JobViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-
 class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.all().order_by("-applied_at")
     serializer_class = ApplicationSerializer
@@ -325,7 +336,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        job_company_user = getattr(getattr(application.job, "company", None), "user", None)
+        job_company_user = getattr(
+            getattr(application.job, "company", None), "user", None
+        )
         if job_company_user is not None and job_company_user != user:
             return Response(
                 {"detail": "You do not have permission to access this application."},
@@ -338,7 +351,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             raise Http404("No resume uploaded for this candidate.")
 
         # Derive a safe filename
-        username = getattr(getattr(application.candidate, "user", None), "username", "candidate")
+        username = getattr(
+            getattr(application.candidate, "user", None), "username", "candidate"
+        )
         original_name = resume.name.split("/")[-1]
         filename = original_name or f"{username}-resume"
 
@@ -361,7 +376,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        job_company_user = getattr(getattr(application.job, "company", None), "user", None)
+        job_company_user = getattr(
+            getattr(application.job, "company", None), "user", None
+        )
         if job_company_user is not None and job_company_user != user:
             return Response(
                 {"detail": "You do not have permission to access this application."},
@@ -369,7 +386,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             )
 
         if request.method.lower() == "get":
-            qs = Interview.objects.filter(application=application).order_by("-scheduled_at")
+            qs = Interview.objects.filter(
+                application=application
+            ).order_by("-scheduled_at")
             serializer = InterviewSerializer(qs, many=True)
             return Response(serializer.data)
 
@@ -378,7 +397,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer = InterviewSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         interview = serializer.save(application=application)
-        return Response(InterviewSerializer(interview).data, status=status.HTTP_201_CREATED)
+        return Response(
+            InterviewSerializer(interview).data, status=status.HTTP_201_CREATED
+        )
 
     def perform_create(self, serializer):
         """
@@ -417,7 +438,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception as e:
             print("Error sending application email:", e)
 
-    @action(detail=True, methods=["get"], url_path="test", permission_classes=[permissions.IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="test",
+        permission_classes=[permissions.IsAuthenticated],
+    )
     def candidate_test(self, request, pk=None):
         """
         Candidate: GET /api/applications/<id>/test/
@@ -426,8 +452,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application = self.get_object()
 
         # Only that candidate can view their test
-        if getattr(request.user, "role", None) != "candidate" or \
-           application.candidate.user != request.user:
+        if (
+            getattr(request.user, "role", None) != "candidate"
+            or application.candidate.user != request.user
+        ):
             return Response(
                 {"detail": "Not allowed."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -447,7 +475,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer = JobTestSerializer(test)
         return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], url_path="submit-test", permission_classes=[permissions.IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="submit-test",
+        permission_classes=[permissions.IsAuthenticated],
+    )
     def submit_test(self, request, pk=None):
         """
         Candidate: POST /api/applications/<id>/submit-test/
@@ -456,8 +489,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application = self.get_object()
 
         # Only that candidate can submit their test
-        if getattr(request.user, "role", None) != "candidate" or \
-           application.candidate.user != request.user:
+        if (
+            getattr(request.user, "role", None) != "candidate"
+            or application.candidate.user != request.user
+        ):
             return Response(
                 {"detail": "Not allowed."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -549,8 +584,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-
-    @action(detail=True, methods=["get"], url_path="test-results", permission_classes=[permissions.IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="test-results",
+        permission_classes=[permissions.IsAuthenticated],
+    )
     def recruiter_test_results(self, request, pk=None):
         """
         Recruiter: GET /api/applications/<id>/test-results/
@@ -560,8 +599,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         user = request.user
 
         # Only recruiter who owns the job's company
-        if getattr(user, "role", None) != "recruiter" or \
-           application.job.company.user != user:
+        if (
+            getattr(user, "role", None) != "recruiter"
+            or application.job.company.user != user
+        ):
             return Response(
                 {"detail": "Only the job's recruiter can view test results."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -574,8 +615,31 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        serializer = JobTestResultSerializer(test, context={"application": application})
+        serializer = JobTestResultSerializer(
+            test, context={"application": application}
+        )
         return Response(serializer.data)
+    
+    
+    def perform_update(self, serializer):
+        """
+        When an application is updated (usually by recruiter changing status),
+        send a status email + create an application status notification
+        IF the status actually changed.
+        """
+        # Current state before save
+        instance = self.get_object()
+        old_status = instance.status
+
+        # Save updates
+        application = serializer.save()
+
+        # If status changed, trigger email + notification
+        if application.status != old_status:
+            try:
+                send_application_status_email(application)
+            except Exception as e:
+                print("Error sending application status email on update:", e)
 
 
 class SaveJobView(generics.CreateAPIView):
@@ -652,6 +716,9 @@ class CandidateNotificationListView(generics.ListAPIView):
 
 
 class MarkNotificationReadView(generics.UpdateAPIView):
+    """
+    Mark a job alert notification as read.
+    """
     serializer_class = JobAlertNotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "pk"
@@ -662,6 +729,45 @@ class MarkNotificationReadView(generics.UpdateAPIView):
 
     def patch(self, request, *args, **kwargs):
         # mark as read
+        instance = self.get_object()
+        instance.is_read = True
+        instance.save()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+
+# 🔹 NEW: application status notifications (emails mirrored into DB)
+
+
+class CandidateApplicationStatusNotificationListView(generics.ListAPIView):
+    """
+    List application status updates for the logged-in candidate.
+    """
+    serializer_class = ApplicationStatusNotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        profile, _ = CandidateProfile.objects.get_or_create(user=self.request.user)
+        return ApplicationStatusNotification.objects.filter(
+            application__candidate=profile
+        ).order_by("-created_at")
+
+
+class MarkApplicationStatusNotificationReadView(generics.UpdateAPIView):
+    """
+    Mark an application status notification as read.
+    """
+    serializer_class = ApplicationStatusNotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "pk"
+
+    def get_queryset(self):
+        profile, _ = CandidateProfile.objects.get_or_create(user=self.request.user)
+        return ApplicationStatusNotification.objects.filter(
+            application__candidate=profile
+        )
+
+    def patch(self, request, *args, **kwargs):
         instance = self.get_object()
         instance.is_read = True
         instance.save()
@@ -685,15 +791,15 @@ class RecruiterApplicationsView(generics.ListAPIView):
         ).filter(job__company__user=user)
 
         params = self.request.query_params
-        search = params.get("search")             # candidate name or email
-        job_title = params.get("job")             # job title filter
-        status_param = params.get("status")       # applied, shortlisted, rejected, selected
+        search = params.get("search")  # candidate name or email
+        job_title = params.get("job")  # job title filter
+        status_param = params.get("status")  # applied, shortlisted, rejected, selected
 
         # 🔍 Search candidate by name or email
         if search:
             qs = qs.filter(
-                Q(candidate__user__username__icontains=search) |
-                Q(candidate__user__email__icontains=search)
+                Q(candidate__user__username__icontains=search)
+                | Q(candidate__user__email__icontains=search)
             )
 
         # 🎯 Filter by job title
@@ -730,7 +836,9 @@ class InterviewViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # Force creation via ApplicationViewSet action
-        raise ValidationError("Use /api/applications/<id>/interviews/ to create interviews.")
+        raise ValidationError(
+            "Use /api/applications/<id>/interviews/ to create interviews."
+        )
 
 
 class RecruiterAnalyticsView(generics.GenericAPIView):

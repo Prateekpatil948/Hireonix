@@ -118,6 +118,24 @@ class JobAlertNotification(models.Model):
         return f"Notification for {self.candidate.user.username} - {self.job.title}"
 
 
+class ApplicationStatusNotification(models.Model):
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="status_notifications",
+    )
+    status = models.CharField(max_length=20)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Status notification: {self.application.candidate.user.username} - {self.status}"
+
+
 class Interview(models.Model):
     STATUS_CHOICES = (
         ("scheduled", "Scheduled"),

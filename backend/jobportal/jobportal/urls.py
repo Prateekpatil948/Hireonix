@@ -18,6 +18,9 @@ from jobs.views import (
     RecruiterApplicationsView,
     InterviewViewSet,
     RecruiterAnalyticsView,
+    # 🔹 NEW imports
+    CandidateApplicationStatusNotificationListView,
+    MarkApplicationStatusNotificationReadView,
 )
 
 from accounts.views import (
@@ -65,6 +68,18 @@ urlpatterns = [
     path("api/alerts/<int:pk>/", CandidateJobAlertDetailView.as_view(), name="job-alert-detail"),
     path("api/alerts/notifications/", CandidateNotificationListView.as_view(), name="job-alert-notifications"),
     path("api/alerts/notifications/<int:pk>/read/", MarkNotificationReadView.as_view(), name="job-alert-notification-read"),
+
+    # 🔹 NEW: Application status notifications (backend mirror of the emails)
+    path(
+        "api/alerts/application-status/",
+        CandidateApplicationStatusNotificationListView.as_view(),
+        name="application-status-notifications",
+    ),
+    path(
+        "api/alerts/application-status/<int:pk>/read/",
+        MarkApplicationStatusNotificationReadView.as_view(),
+        name="application-status-notification-read",
+    ),
 
     # router (jobs, applications, interviews)
     path("api/", include(router.urls)),

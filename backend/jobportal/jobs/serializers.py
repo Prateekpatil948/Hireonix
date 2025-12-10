@@ -9,6 +9,7 @@ from .models import (
     JobTest,
     JobTestAnswer,
     JobTestQuestion,
+    ApplicationStatusNotification, 
 )
 
 
@@ -164,9 +165,41 @@ class JobAlertSerializer(serializers.ModelSerializer):
 
 
 class JobAlertNotificationSerializer(serializers.ModelSerializer):
-    job = JobSerializer(read_only=True)
+    job_title = serializers.CharField(source="job.title", read_only=True)
+    company_name = serializers.CharField(source="job.company.name", read_only=True)
+    job_id = serializers.IntegerField(source="job.id", read_only=True)  # ⭐ add this
 
     class Meta:
         model = JobAlertNotification
-        fields = "__all__"
-        read_only_fields = ["candidate", "created_at"]
+        fields = [
+            "id",
+            "job_title",
+            "company_name",
+            "job_id",        # ⭐ include here
+            "is_read",
+            "created_at",
+        ]
+
+
+
+# ===========================
+#   APPLICATION STATUS NOTIFICATIONS
+# ===========================
+
+class ApplicationStatusNotificationSerializer(serializers.ModelSerializer):
+    job_title = serializers.CharField(source="application.job.title", read_only=True)
+    company_name = serializers.CharField(source="application.job.company.name", read_only=True)
+    job_id = serializers.IntegerField(source="application.job.id", read_only=True)  # ⭐ add this
+
+    class Meta:
+        model = ApplicationStatusNotification
+        fields = [
+            "id",
+            "job_title",
+            "company_name",
+            "job_id",         # ⭐ include here
+            "status",
+            "message",
+            "is_read",
+            "created_at",
+        ]
