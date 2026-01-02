@@ -1,0 +1,20 @@
+
+.pyc
+__pycache__/
+*.sqlite3
+backend/jobportal/db.sqlite3
+*.log
+.env
+venv/
+env/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
